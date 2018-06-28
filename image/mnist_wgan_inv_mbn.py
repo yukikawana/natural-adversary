@@ -51,7 +51,6 @@ class MnistWganInv(object):
 
             self.z = tf.placeholder(tf.float32, shape=[None, self.z_dim])
             self.x_p = self.generate(self.z)
-            print("xp",self.x_p.shape)
 
             #self.x = tf.placeholder(tf.float32, shape=[None, self.x_dim])
             self.x = tf.placeholder(tf.float32, shape=[None, 512,31,10])
@@ -69,10 +68,13 @@ class MnistWganInv(object):
 
             self.dis_cost = tf.reduce_mean(self.dis_x_p) - tf.reduce_mean(self.dis_x)
 
-            alpha = tf.random_uniform(shape=[self.batch_size, 1], minval=0., maxval=1.)
+            alpha = tf.random_uniform(shape=[self.batch_size,512,31,10], minval=0., maxval=1.)
             difference = self.x_p - self.x
+            print("xp",self.x_p.shape)
+            print("x",self.x.shape)
+            print("diff",difference.shape)
             interpolate = self.x + alpha * difference
-            gradient = tf.gradients(self.discriminate(interpolate), [interpolate])[0]
+            gradient = tf.gradients(self.discriminate(interpolate,reuse=True), [interpolate])[0]
             slope = tf.sqrt(tf.reduce_sum(tf.square(gradient), axis=1))
             gradient_penalty = tf.reduce_mean((slope - 1.) ** 2)
             self.dis_cost += self.c_gp_x * gradient_penalty
@@ -173,8 +175,7 @@ class MnistWganInv(object):
         nf_input = input_shape[-1]
         if upsample:
             upsample_shape = tuple([int(x)*2 for x in  input_shape[1:3]])
-            print(upsample_shape)
-            shortcut = tf.image.resize_nearest_neighbor(inputs, upsample_shape) 
+            inputs = tf.image.resize_nearest_neighbor(inputs, upsample_shape) 
 
         x = self._bottleneck(inputs, filters, kernel, t, strides,act=act)
 
@@ -186,12 +187,17 @@ class MnistWganInv(object):
         with tf.variable_scope('generate', reuse=reuse):
             net = slim.fully_connected(z, 32*2*160, activation_fn=None) # 4x4x512
             net = tf.reshape(net, [-1, 32, 2, 160])
+            print(net.shape)
             net = self._inverted_residual_block(net, 96, (3, 3), t=6, strides=1, n=1,upsample=True,act=tf.nn.relu)
+            print(net.shape)
             net = self._inverted_residual_block(net, 64, (3, 3), t=6, strides=1, n=1,upsample=True,act=tf.nn.relu)
+            print(net.shape)
             net = self._inverted_residual_block(net, 32, (3, 3), t=6, strides=1, n=1,upsample=True,act=tf.nn.relu)
+            print(net.shape)
             net = self._inverted_residual_block(net, 24, (3, 3), t=6, strides=1, n=1,upsample=True,act=tf.nn.relu)
+            print(net.shape)
             net = slim.batch_norm(net, activation_fn=tf.nn.relu, **self.bn_params)
-            net = slim.conv2d(net, 3, kernel_size=[3,3], activation_fn=None)
+            net = slim.conv2d(net, 10, kernel_size=[3,3], activation_fn=None)
             net = net[:,:,:-1,:]
 
             return net
@@ -317,6 +323,7 @@ if __name__ == '__main__':
         data_files = sorted(data_files)
         data_files = np.array(data_files) # for tl.iterate.minibatches
         iteration=0
+        print("pre epoch")
         for epoch in range(args.epoch):
             try:
                 minibatch = tl.iterate.minibatches(inputs=data_files, targets=data_files, batch_size=args.batch_size, shuffle=True)
